@@ -1,4 +1,5 @@
-package pacmanapp;
+package project.src.main.java.pacmanapp;
+;
 
 import java.io.IOException;
 import javafx.fxml.FXML;

@@ -1,4 +1,4 @@
-package pacmanapp;
+package project.src.main.java.pacmanapp;
 
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
