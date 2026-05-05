@@ -1,4 +1,4 @@
-package project.src.main.java.pacmanapp;
+/*package project.src.main.java.pacmanapp;
 
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
@@ -10,7 +10,7 @@ import java.io.IOException;
 
 /**
  * JavaFX App
- */
+ 
 public class App extends Application {
 
     private static Scene scene;
@@ -36,3 +36,4 @@ public class App extends Application {
     }
 
 }
+*/

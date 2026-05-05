@@ -1,4 +1,4 @@
-package project.src.main.java.pacmanapp;
+/*package project.src.main.java.pacmanapp;
 ;
 
 import java.io.IOException;
@@ -11,3 +11,4 @@ public class PrimaryController {
         App.setRoot("secondary");
     }
 }
+*/
