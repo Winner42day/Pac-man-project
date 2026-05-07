@@ -4,19 +4,22 @@ import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.Random;
 import java.io.*;
+import java.time.LocalDate;
+import javax.sound.sampled.*;
 
-public class GameCanvas extends JPanel {
-  enum State { LOGIN, MENU, MAP_SELECT, MAP_HUB, PLAYING, LEADERBOARD, OVERALL_LEADERBOARD, CONTROLS, POINTS, STATISTICS, ACHIEVEMENTS, PROFILE_HUB, FRIENDS_HUB, STORE }
+public class GameCanvas extends JPanel { // alle variablerne for spillet, knapper, leaderboards, stats, spil logik osv.
+enum State { LOGIN, MENU, MAP_SELECT, MAP_HUB, PLAYING, LEADERBOARD, OVERALL_LEADERBOARD, 
+             CONTROLS, POINTS, STATISTICS, ACHIEVEMENTS, PROFILE_HUB, FRIENDS_HUB, 
+             STORE, SETTINGS } 
 
-
-// 1. knapper
+// knapper
 JButton playBtn, mapsBtn, overallBtn, statsBtn, achieveBtn, controlsBtn, pointsBtn, backBtn, 
         map1Btn, map2Btn, map3Btn, mapPlayBtn, mapLeadBtn, retryBtn, menuBtn, loginBtn, 
         createAccBtn, personalBtn, allTimeBtn, stOverallBtn, stMap1Btn, stMap2Btn, 
         stMap3Btn, achGameplayBtn, achOneTimeBtn, achSingleBtn, friendsBtn, 
-        addFriendBtn, friendsHubBtn, storeBtn;
+        addFriendBtn, friendsHubBtn, storeBtn, settingsBtn;
 
-// 2. leaderboards og venner
+// eaderboards og venner
 static class ScoreEntry {
     String name, mapName; int score;
     ScoreEntry(String n, int s, String m) { this.name = n; this.score = s; this.mapName = m; }
@@ -31,8 +34,10 @@ ArrayList<String> myFriends = new ArrayList<>();
 ArrayList<String> justNamesOfFriends = new ArrayList<>();
 boolean showingFriends = false;
 boolean showingPersonal = false;
+Clip menuMusic;
+Clip gameMusic;
 
-// 3. stats og coins og AP
+// stats og coins og AP
 int lifetimeCoins = 0;      
 int coins = 0;              
 int totalAP = 0;            
@@ -51,16 +56,20 @@ int dailyChallengeGoal = 0;
 boolean dailyChallengeDone = false;
 int tDaily = 0;
 // Weekly challenges
+int weeklyGhosts = 0;
+int weeklyRounds = 0;
+int weeklyFruits = 0;
+int weeklyGames = 0;
 String[] weeklyChallengeDescs = new String[5];
 int[] weeklyChallengeGoals = new int[5];
 boolean[] weeklyChallengeDone = new boolean[5];
 int[] weeklyChallengeRewards = {10, 10, 10, 10, 25};
 int careerHighScore = 0;
 
-// 5. Spil og bane
+// Spil og map
 int ghostsActiveCount = 1;     
 long lastGhostSpawnTime = 0;    
-int[][] bane = new int[21][21];
+int[][] map = new int[21][21];
 int[][] originalBaneLayout = new int[21][21];
 int selectedMap = 0;
 String[] mapNames = {"CLASSIC", "OPEN FIELD", "THE SPIRAL"};
@@ -71,7 +80,7 @@ int gridSize = 40;
 double difficulty = 0.3;
 String currentUser = "";
 
-// 6. in-game
+// in-game
 int score = 0, level = 1, lives = 3;
 int pelletsEatenInLevel = 0; 
 int sessionGhosts = 0, sessionFruits = 0;
@@ -80,17 +89,19 @@ long sessionStartTime, levelStartTime;
 int ghostsEatenInStreak = 0, frightenedTimer = 0;
 boolean diedThisLevel = false, gameOver = false;
 
-// 7. pacman movement og skins
+// pacman movement og skins
 int pacX, pacY, directionX, directionY, nextDireX, nextDireY, nextAngle, eatAngle;
 int speed = 4, mouthAngle = 300;
 private float mouthTimer = 0;
+int storeSelectedTab = 0; 
 String pacColor = "YELLOW"; 
 String ghostSkin = "CLASSIC";
 String ownedItems = "YELLOW,CLASSIC"; 
 String equippedMap = "DEFAULT";
 Color wallColor = new Color(0, 150, 255);
-
-// 8. system og shop og achievements
+String pelletSkin = "DEFAULT";
+// system og shop og achievements
+private boolean isTransitioning = false;
 int storeScrollY = 0;
 int statsSelectedAch = 0, achScrollY = 0, statsSelectedTab = 0;
 boolean achGhostBuster = false, achMaxedOut = false;
@@ -132,6 +143,13 @@ int[] careerFruits = new int[10];
                 gameOver = true;
                 checkScore(); 
             } 
+            else if (currentState == State.CONTROLS || currentState == State.POINTS) {
+    switchState(State.SETTINGS); // Går nu tilbage til Settings i stedet for profil
+}
+ else if (currentState == State.SETTINGS || currentState == State.PROFILE_HUB || 
+             currentState == State.MAP_SELECT || currentState == State.OVERALL_LEADERBOARD) {
+        switchState(State.MENU);
+    }
             // Tryk Q ved nogle af de her "menuer" havner du i profile
             else if (currentState == State.STATISTICS || currentState == State.ACHIEVEMENTS || 
                      currentState == State.STORE || currentState == State.FRIENDS_HUB ||
@@ -208,13 +226,26 @@ achGameplayBtn = createBtn("GAMEPLAY", 100, 20);
 achOneTimeBtn  = createBtn("ONE TIME", 340, 20);
 achSingleBtn   = createBtn("SINGLE GAME", 580, 20);
 
+JButton settingsBtn;
+
+// Inde i constructoren:
+settingsBtn = createBtn("SETTINGS", 20, 880); // Placeres i nederste venstre hjørne
+styleArcadeBtn(settingsBtn);
+settingsBtn.setBounds(20, 880, 140, 45);
+
+// Gør så den skifter til SETTINGS state
+settingsBtn.addActionListener(ev -> {
+    System.out.println("Settings klikket!"); // Bruges til at teste i konsollen
+    switchState(State.SETTINGS);
+});
+
 // laver knapperne og giver dem et "arcade" look
 JButton[] allButtons = {
     loginBtn, createAccBtn, playBtn, mapsBtn, overallBtn, statsBtn, achieveBtn, 
     controlsBtn, pointsBtn, backBtn, map1Btn, map2Btn, map3Btn, mapPlayBtn, 
     mapLeadBtn, retryBtn, menuBtn, personalBtn, friendsBtn, allTimeBtn, 
     stOverallBtn, stMap1Btn, stMap2Btn, stMap3Btn, achGameplayBtn, 
-    achOneTimeBtn, achSingleBtn, addFriendBtn, friendsHubBtn, storeBtn
+    achOneTimeBtn, achSingleBtn, addFriendBtn, friendsHubBtn, storeBtn,settingsBtn
 };
 
 for(JButton b : allButtons) {
@@ -301,7 +332,7 @@ this.addMouseWheelListener(e -> {
     }
 });
 
-// spille motoren er en timer der kører hver 20ms og opdatere spillet hvis vi er i PLAYING state og ikke er gameover, og den kalder repaint for at tegne det hele igen
+// spille motoren er en timer der kører hver 20ms og opdatere spillet hvis vi er i PLAYING state og ikke er gameover, og den kalder repaint for at tegne det hele igen. den er ikke lavere fordi det kan give performance problemer på nogle computere, og det er ikke nødvendigt at opdatere oftere end det for at få en glat oplevelse
 motor = new Timer(20, timerEvent -> { 
     if (currentState == State.PLAYING && !gameOver) {
         updateGame(); 
@@ -321,34 +352,77 @@ motor.start();
         switchState(State.PROFILE_HUB);
         return;
     }
-
+    if (currentState == State.MENU && mx > 20 && mx < 160 && my > 880 && my < 925) {
+    System.out.println("Settings klikket via MouseListener!");
+    switchState(State.SETTINGS);
+    return; // Stop her så vi ikke klikker på noget nedenunder
+}
     // store logik
-    if (currentState == State.STORE) {
-        // Vi beregner 'sy' (scroll-y) så klikket følger med de rullende kasser
-        int sy = my + storeScrollY - 250; 
-        
-        System.out.println("KLIK: x=" + mx + ", y=" + my + " | sy=" + sy);
+    // Inde i din MouseListener -> mousePressed
+if (currentState == State.STORE) {
+    // Tjek først om der klikkes på fanerne (y er mellem 260 og 305)
+    if (my > 260 && my < 305) {
+        for (int i = 0; i < 4; i++) {
+            int tx = 55 + (i * 185);
+            if (mx > tx && mx < tx + 175) {
+                storeSelectedTab = i;
+                storeScrollY = 0; // Nulstil scroll
+                repaint();
+                return; // Stop her så vi ikke klikker på en vare samtidig
+            }
+        }
+    }
 
-        // venstre side af skidtet
-        if (mx > 100 && mx < 320) { //tjekker pixels mellem 100 og 320
-            if (sy > 50 && sy < 200) handlePurchaseOrEquip("BLUE", 50); //sy checker pixels mellem 50 og 200, og hvis det er der så kalder den handlePurchaseOrEquip med itemID "BLUE" og pris 50
-            else if (sy > 250 && sy < 400) handlePurchaseOrEquip("PINK_MLP", 100);
-            else if (sy > 450 && sy < 600) handlePurchaseOrEquip("PINK_MAP", 200);
+
+    // Tjek klik på varer baseret på den VALGTE FANE
+    int sy = my + storeScrollY - 320; // Justering for scroll
+
+    if (storeSelectedTab == 0) { // --- PACMAN FANEN ---
+        if (mx > 100 && mx < 320) {
+            if (sy > 30 && sy < 180) handlePurchaseOrEquip("BLUE", 50);
+            else if (sy > 210 && sy < 360) handlePurchaseOrEquip("PINK_MLP", 100);
+        } else if (mx > 420 && mx < 640) {
+            if (sy > 30 && sy < 180) handlePurchaseOrEquip("RED", 50);
         }
-        // højre side af skidtet
-        else if (mx > 420 && mx < 640) {
-            if (sy > 50 && sy < 200) handlePurchaseOrEquip("RED", 50);
-            else if (sy > 250 && sy < 400) handlePurchaseOrEquip("ROBOT", 150);
-            else if (sy > 450 && sy < 600) handlePurchaseOrEquip("GREEN_MAP", 200);
+    } 
+    else if (storeSelectedTab == 1) { // GHOSTS FANEN ---
+        if (mx > 100 && mx < 320 && sy > 30 && sy < 180) {
+            handlePurchaseOrEquip("ROBOT", 150);
         }
-        repaint();
+    } 
+    else if (storeSelectedTab == 2) { // MAPS FANEN ---
+        if (mx > 100 && mx < 320 && sy > 30 && sy < 180) handlePurchaseOrEquip("PINK_MAP", 200);
+        else if (mx > 420 && mx < 640 && sy > 30 && sy < 180) handlePurchaseOrEquip("GREEN_MAP", 200);
+    } 
+    else if (storeSelectedTab == 3) { // PELLETS FANEN ---
+        if (mx > 100 && mx < 320) {
+            if (sy > 30 && sy < 180) handlePurchaseOrEquip("COIN", 150);
+            else if (sy > 210 && sy < 360) handlePurchaseOrEquip("GEAR", 250);
+        } else if (mx > 420 && mx < 640) {
+            if (sy > 30 && sy < 180) handlePurchaseOrEquip("CAKE", 200);
+        }
+    }
+    repaint();
+}
+
+if (currentState == State.STORE && my > 260 && my < 305) { // den gør så man kan klikke på fanerne i shoppen og så skifter den tab
+    for (int i = 0; i < 4; i++) {
+        int tx = 55 + (i * 185);
+        if (mx > tx && mx < tx + 175) {
+            storeSelectedTab = i;
+            storeScrollY = 0;
+            repaint();
+            return;
+        }
     }
 }
 
 }
+
+}
 );
-switchState(State.LOGIN);
-this.requestFocusInWindow();
+switchState(State.LOGIN); // starter i login state
+this.requestFocusInWindow(); // sørger for at keylisteneren virker med det samme uden at skulle klikke først
     }
 
 private void handlePurchaseOrEquip(String itemID, int price) {
@@ -388,6 +462,9 @@ private void handlePurchaseOrEquip(String itemID, int price) {
         }
         else if (id.equals("BLUE") || id.equals("RED") || id.equals("PINK_MLP")) {
             pacColor = pacColor.equals(id) ? "YELLOW" : id;
+        }
+        else if (id.equals("COIN") || id.equals("CAKE") || id.equals("GEAR")) { // pellets der er i shoppen bliver equippet
+        pelletSkin = pelletSkin.equals(id) ? "DEFAULT" : id; 
         }
 
         updateUserData(); //som nævnt husker det til næste gang spillet åbnes
@@ -452,13 +529,13 @@ private void styleArcadeBtn(JButton b) {
     private void switchState(State s) {
     // Opdaterer spillets nuværende state
     currentState = s;
-    
+    updateMusic(s);
     // vi skjuller alle knapper så de ikke går over hinanden
     JButton[] all = {playBtn, mapsBtn, overallBtn, statsBtn, achieveBtn, controlsBtn, pointsBtn, backBtn, 
                      map1Btn, map2Btn, map3Btn, mapPlayBtn, mapLeadBtn, retryBtn, menuBtn, loginBtn, 
                      createAccBtn, personalBtn, allTimeBtn, friendsBtn, stOverallBtn, stMap1Btn, 
                      stMap2Btn, stMap3Btn, achGameplayBtn, achOneTimeBtn, achSingleBtn, 
-                     addFriendBtn, friendsHubBtn, storeBtn};
+                     addFriendBtn, friendsHubBtn, storeBtn,settingsBtn};
     
     // går gennem alle knapper og gør dem usynlige, hvis de er er ikke null
     for (JButton b : all) if(b != null) b.setVisible(false);
@@ -469,10 +546,11 @@ private void styleArcadeBtn(JButton b) {
         loginBtn.setVisible(true); 
         createAccBtn.setVisible(true); 
     }
-    else if (s == State.MENU) { 
-        playBtn.setVisible(true); 
-        mapsBtn.setVisible(true); 
+    else if (s == State.MENU) {
+        playBtn.setVisible(true);
+        mapsBtn.setVisible(true);
         overallBtn.setVisible(true);
+        settingsBtn.setVisible(true);
         loadLeaderboards();         // Henter scores
         generateDailyChallenge();   // Opdaterer dagens udfordring
     }
@@ -483,7 +561,7 @@ private void styleArcadeBtn(JButton b) {
         backBtn.setVisible(true); 
         backBtn.setBounds(330, 850, 160, 45); // sætter back knap
     }
-    else if (s == State.MAP_HUB) {
+    else if (s == State.MAP_HUB) {  
         mapPlayBtn.setVisible(true);
         mapLeadBtn.setVisible(true);
         backBtn.setVisible(true);
@@ -507,7 +585,7 @@ private void styleArcadeBtn(JButton b) {
     }
     else if (s == State.PROFILE_HUB) {
         loadOnlyFriendNames(); 
-        JButton[] profBtns = {statsBtn, achieveBtn, storeBtn, controlsBtn, pointsBtn, friendsHubBtn, backBtn};
+        JButton[] profBtns = {statsBtn, achieveBtn, storeBtn, friendsHubBtn, backBtn};
         int y = 280; 
         for (JButton b : profBtns) {
             if (b != null) {
@@ -517,6 +595,23 @@ private void styleArcadeBtn(JButton b) {
             }
         }
         backBtn.setBounds(330, 750, 160, 45); 
+    }
+    else if (s == State.STATISTICS) {
+    stOverallBtn.setVisible(true);
+    stMap1Btn.setVisible(true);
+    stMap2Btn.setVisible(true);
+    stMap3Btn.setVisible(true);
+    backBtn.setVisible(true);
+}
+    else if (s == State.SETTINGS) {
+        // Her viser vi de tekniske ting
+        controlsBtn.setVisible(true);
+        pointsBtn.setVisible(true);
+        backBtn.setVisible(true);
+        
+        controlsBtn.setBounds(330, 300, 160, 45);
+        pointsBtn.setBounds(330, 360, 160, 45);
+        backBtn.setBounds(330, 850, 160, 45);
     }
     else if (s == State.STATISTICS || s == State.STORE || 
              s == State.FRIENDS_HUB || s == State.POINTS || s == State.CONTROLS) {
@@ -607,7 +702,7 @@ private boolean saveUser(String u, String p) {
 }
 
 private void updateGame() {
-    // Frigiver 1 spøgelse hvert 10. sekund
+    // releaser 1 spøgelse hvert 10. sekund
     long nu = System.currentTimeMillis();
     if (ghostsActiveCount < 4 && nu - lastGhostSpawnTime > 10000) {
         ghostsActiveCount++;
@@ -639,38 +734,56 @@ private void updateGame() {
         int nr = r + (nextDireY / speed);
         int nc = c + (nextDireX / speed);
         
-        if (nr >= 0 && nr < 21 && nc >= 0 && nc < 21 && bane[nr][nc] != 1) {
+        if (nr >= 0 && nr < 21 && nc >= 0 && nc < 21 && map[nr][nc] != 1) {
             directionX = nextDireX;
             directionY = nextDireY;
             eatAngle = nextAngle;
         }
     }
 
-    // checker for vægge og stopper pacman hvis der er en væg, ellers bevæger den pacman i den retning den skal bevæge sig i, og den laver også tunnel bevægelse
-    int nX = pacX + directionX;
-    int nY = pacY + directionY;
+// Beregner næste position
+int nX = pacX + directionX;
+int nY = pacY + directionY;
+
+// Hvis han går ud af venstre side (x < -20 pixels)
+if (nX < -20) { 
+    pacX = 840; // så skal han hop til kanten af højre side
+} 
+// Hvis han går ud af højre side (x > 840 pixels)
+else if (nX > 840) { 
+    pacX = -20; // så hop til kanten af venstre side
+} 
+else {
+    // Vi tjekker kun kollision, hvis vi IKKE er i gang med at teleportere
     int col = (nX + (directionX > 0 ? 38 : 2)) / gridSize;
     int row = (nY + (directionY > 0 ? 38 : 2)) / gridSize;
 
-    if (col < 0 || col >= 21) {
-        pacX = nX; // Tunnel bevægelse
-    } 
-    else if (row >= 0 && row < 21 && bane[row][col] != 1) {
-        pacX = nX;
-        pacY = nY;
+    // Tjek vægge (map[row][col] != 1)
+    if (row >= 0 && row < 21 && col >= 0 && col < 21) {
+        if (map[row][col] != 1) {
+            pacX = nX;
+            pacY = nY;
+        } else {
+            // Stop ved væg og snap til grid
+            directionX = 0; directionY = 0;
+            pacX = Math.round((float)pacX / gridSize) * gridSize;
+            pacY = Math.round((float)pacY / gridSize) * gridSize;
+        }
     } else {
-        directionX = 0; directionY = 0;
-        pacX = Math.round((float)pacX / gridSize) * gridSize;
-        pacY = Math.round((float)pacY / gridSize) * gridSize;
+        // Hvis vi er uden for grænserne, tillad teleportering
+        pacX = nX; // dette betyder at hvis vi er uden for grænserne i x-retning, så tillader vi det og lader pacman teleportere
+        pacY = nY; // samme her men y
     }
+}
+
 
     // Pellets, Power Pellets og Frugt-spawn
     int er = (pacY + 20) / gridSize;
     int ec = (pacX + 20) / gridSize;
     if (er >= 0 && er < 21 && ec >= 0 && ec < 21) {
-        int feltValue = bane[er][ec];
+        int feltValue = map[er][ec];
         if (feltValue == 2 || feltValue == 3) {
-            bane[er][ec] = 0; 
+            map[er][ec] = 0; 
             pelletsEatenInLevel++; 
 
             if (pelletsEatenInLevel == 50 && !fruit1Spawned) { spawnFruit(); fruit1Spawned = true; }
@@ -701,7 +814,7 @@ private void updateGame() {
         if (i < ghostsActiveCount) {
             Ghost g = ghosts.get(i);
             // Sender indeks (i) og Blinky (ghosts.get(0)) med til AI'en
-            g.update(pacX, pacY, bane, gridSize, difficulty, i, ghosts.get(0));
+            g.update(pacX, pacY, map, gridSize, difficulty, i, ghosts.get(0));
             
             if (Math.hypot(pacX - g.x, pacY - g.y) < 28) {
                 if (g.isFrightenedLocal) {
@@ -733,13 +846,15 @@ private void updateGame() {
 protected void paintComponent(Graphics g) {
     super.paintComponent(g);
     Graphics2D g2 = (Graphics2D) g;
-    // Gør grafikken blødere (Antialiasing)
     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-    // baggrund
+    // Baggrund
     g2.setColor(Color.BLACK);
     g2.fillRect(0, 0, 840, 940);
     
+    g2.setColor(new Color(0, 0, 40)); 
+    for (int i = 0; i < 940; i += 40) g2.drawLine(0, i, 840, i); 
+    for (int i = 0; i < 840; i += 40) g2.drawLine(i, 0, i, 940);
    //rammer i arcade form
     if (currentState != State.PLAYING) drawArcadeBackground(g2);
 
@@ -762,15 +877,18 @@ protected void paintComponent(Graphics g) {
         if (showingPersonal) drawList(g, personalLeaderboard, "MY RECORDS", true);
         else if (showingFriends) drawList(g, friendsLeaderboard, "FRIENDS RECORDS", true);
         else drawList(g, mapLeaderboard, "TOP SCORES", true);
-    }
+    } 
 
-
+    else if (currentState == State.SETTINGS) {
+    // Tegner selve titlen i toppen
+    drawTitle(g2, "SETTINGS");
+}
     // hovedmenu og challenges
     else if (currentState == State.MENU || currentState == State.PROFILE_HUB) {
+        // Her tegner den hovedmenu, titlen og challenges
         drawTitle(g2, "PAC-MAN");
-        drawPlayerIcon(g2); // XP Bar, Level og AP
+        drawPlayerIcon(g2); 
         
-        // coin icon
         g2.setFont(new Font("Impact", Font.PLAIN, 28));
         g2.setColor(Color.YELLOW);
         g2.drawString("COINS: " + coins, 640, 60);
@@ -791,6 +909,16 @@ protected void paintComponent(Graphics g) {
             g2.setFont(new Font("Arial", Font.BOLD, 15));
             g2.setColor(dailyChallengeDone ? Color.GREEN : Color.WHITE);
             g2.drawString(dailyChallengeDesc + (dailyChallengeDone ? " [OK]" : ""), 200, dy + 70);
+
+            g2.setColor(Color.GRAY);
+int gearX = 35, gearY = 890;
+g2.fillOval(gearX, gearY, 20, 20); 
+for(int i=0; i<8; i++) { 
+    double angle = Math.toRadians(i * 45);
+    g2.fillRect((int)(gearX+8 + Math.cos(angle)*12), (int)(gearY+8 + Math.sin(angle)*12), 5, 5);
+}
+g2.setColor(Color.BLACK);
+g2.fillOval(gearX+7, gearY+7, 6, 6);
 
             // weekly challenges box
             int wy = 610;
@@ -827,16 +955,40 @@ protected void paintComponent(Graphics g) {
         for (int r = 0; r < 21; r++) {
             for (int c = 0; c < 21; c++) {
                 int bx = c * gridSize, by = r * gridSize;
-                if (bane[r][c] == 1) { // Vægge med neon-glød
-                    g2.setColor(new Color(0, 0, 40)); 
-                    g2.fillRect(bx, by, gridSize, gridSize);
-                    g2.setColor(new Color(0, 150, 255, 180));
-                    g2.setStroke(new BasicStroke(3));
-                    g2.drawRect(bx + 3, by + 3, gridSize - 6, gridSize - 6);
-                } else if (bane[r][c] == 2) { // Prikker
-                    g2.setColor(new Color(255, 184, 151));
-                    g2.fillRect(bx + 18, by + 18, 4, 4);
-                } else if (bane[r][c] == 3) { // Power Pellets
+                if (map[r][c] == 1) { 
+    // Baggrunden inde i væggen 
+    g2.setColor(wallColor.darker().darker()); 
+    g2.fillRect(bx, by, gridSize, gridSize);
+    
+    // neon-kanten 
+    g2.setColor(wallColor);
+    g2.setStroke(new BasicStroke(3));
+    g2.drawRect(bx + 3, by + 3, gridSize - 6, gridSize - 6);
+} else if (map[r][c] == 2) { // Pellets
+    if (pelletSkin.equals("COIN")) {
+        g2.setColor(new Color(255, 215, 0)); // Guld
+        g2.fillOval(bx + 14, by + 14, 12, 12);
+        g2.setColor(Color.BLACK);
+        g2.setFont(new Font("Arial", Font.BOLD, 10));
+        g2.drawString("$", bx + 17, by + 24);
+    } 
+    else if (pelletSkin.equals("CAKE")) {
+        g2.setColor(new Color(255, 105, 180)); 
+        g2.fillRect(bx + 12, by + 18, 16, 10);
+        g2.setColor(Color.WHITE);
+        g2.fillRect(bx + 12, by + 16, 16, 4);
+    } 
+    else if (pelletSkin.equals("GEAR")) {
+        g2.setColor(Color.GRAY);
+        g2.fillOval(bx + 12, by + 12, 16, 16);
+        g2.setColor(Color.BLACK);
+        g2.fillOval(bx + 17, by + 17, 6, 6); 
+    } 
+    else { // DEFAULT
+        g2.setColor(new Color(255, 184, 151));
+        g2.fillRect(bx + 18, by + 18, 4, 4);
+    }
+} else if (map[r][c] == 3) { // Power Pellets
                     if ((System.currentTimeMillis() / 250) % 2 == 0) {
                         g2.setColor(Color.WHITE);
                         g2.fillOval(bx + 10, by + 10, 20, 20);
@@ -889,7 +1041,17 @@ protected void paintComponent(Graphics g) {
     for (int i = 0; i < lives; i++) {
         g2.fillArc(95 + (i * 45), 868, 32, 32, 45, 270);
     }}
+     if (currentState != State.PLAYING) {
+        g2.setColor(new Color(0, 50, 255)); 
+        g2.setStroke(new BasicStroke(10)); 
+        g2.drawRect(5, 5, 830, 930);
+        
+        g2.setColor(new Color(100, 150, 255)); 
+        g2.setStroke(new BasicStroke(2)); 
+        g2.drawRect(12, 12, 816, 916);
+    }
 }
+
 
 
 
@@ -988,7 +1150,7 @@ private void checkIfDailyDone() {
     int yPos = 50;
     int ownedSkins = (ownedItems == null || ownedItems.isEmpty()) ? 0 : ownedItems.split(",").length; //tæller skins
 
-    if (statsSelectedAch == 0) { // --- GAMEPLAY PROGRESS ---
+    if (statsSelectedAch == 0) { // GAMEPLAY PROGRESS ---
         int bigGap = 350;   // afstand fra kasser  (10)
         int smallGap = 180; // afstand fra kasser  (5)
 
@@ -1008,22 +1170,22 @@ private void checkIfDailyDone() {
             yPos += smallGap;
         }
     } 
-    else if (statsSelectedAch == 1) { // --- ONE TIME ---
+    else if (statsSelectedAch == 1) { // ONE TIME ---
         drawOneTimeAch(g2, mSco, mNoD);
     } 
-    else if (statsSelectedAch == 2) { // --- SINGLE GAME ---
+    else if (statsSelectedAch == 2) { // SINGLE GAME ---
         drawAchGrid(g2, "SCORE", mSco, new int[]{1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 750000, 1000000}, 80, yPos);
         drawAchGrid(g2, "GHOSTS", mGho, new int[]{1, 4, 8, 12, 16, 20, 25, 30, 40, 50}, 80, yPos += 350);
         drawAchGrid(g2, "LEVELS", mLvl, new int[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, 80, yPos += 350);
     }
 
-    // 4. CLEANUP
+    // CLEANUP
     g2.translate(0, achScrollY - 150);
     g2.setClip(originalClip);
 }
 
  private void drawAchGrid(Graphics2D g2, String label, int currentVal, int[] miles, int x, int y) {
-    // 1. OVERSKRIFT FOR KATEGORIEN (f.eks. GHOSTS: 142)
+    // her laver den kassen for milepælene, og tjekker om de er opnået eller ej, og tegner dem forskelligt
     g2.setFont(new Font("Impact", Font.PLAIN, 24));
     g2.setColor(Color.CYAN);
     String prettyName = isFruitType(label) ? formatFruitName(label, true) : label;
@@ -1121,10 +1283,6 @@ private void drawAchIcon(Graphics2D g2, String label, int x, int y, boolean comp
     }
 }
 
-
-
-
-
 private boolean isFruitType(String t) {
     String[] f = {"CHERRY","STRAWBERRY","APPLE","BANANA","ORANGE","BELL","KEY","STAR","HEART","CROWN"};
     for(String s : f) if(s.equals(t)) return true;
@@ -1188,34 +1346,71 @@ private void drawSpecificFruitIcon(Graphics2D g2, String type, int x, int y, boo
 }
 
 
-  private void loadLeaderboards() {
+private void loadLeaderboards() {
     overallLeaderboard.clear(); 
-    mapLeaderboard.clear();  // rydder de tre lister for at opdatere dem med data fra filen 
+    mapLeaderboard.clear(); 
     personalLeaderboard.clear();
-    totalAP = 0;
-    int lifG = 0, lifF = 0, lifR = 0, lifM = 0, lifGms = 0;
 
-    try (BufferedReader br = new BufferedReader(new FileReader("leaderboard.txt"))) { //læser leaderboard filen og opdaterer de tre lister og tæller lifetime stats for AP
+    // Nulstil tællere for at tælle forfra fra filen
+    // wekly
+    careerGms = 0;
+    careerGhosts = 0;
+    careerFruitsTotal = 0;
+    careerRounds = 0;
+    
+    // bruges til profil
+    int allTimeGhosts = 0;
+    int allTimeFruits = 0;
+    int allTimeRounds = 0;
+    careerHighScore = 0;
+    totalAP = 0;
+
+    // Find dato-intervallet for den nuværende uge (Mandag til Søndag)
+    LocalDate iDag = LocalDate.now();
+    LocalDate startUge = iDag.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+    LocalDate slutUge = iDag.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.SUNDAY));
+
+    try (BufferedReader br = new BufferedReader(new FileReader("leaderboard.txt"))) {
         String l;
         while ((l = br.readLine()) != null) {
-            String[] p = l.split(":");
-            if (p.length < 3) continue;
+            try {
+                String[] p = l.split(":");
+                if (p.length < 7) continue; 
 
-            int scoreVal = Integer.parseInt(p[1]);
-            ScoreEntry se = new ScoreEntry(p[0], scoreVal, p[2]);
-            overallLeaderboard.add(se);
+                String name = p[0];
+                int scoreVal = Integer.parseInt(p[1]);
+                String mName = p[2];
+                LocalDate entryDato = LocalDate.parse(p[6]); 
 
-            if (p[2].equalsIgnoreCase(mapNames[selectedMap])) {
-                mapLeaderboard.add(se);
-                if (p[0].equalsIgnoreCase(currentUser)) personalLeaderboard.add(se);
-            }
+                // Tjek om dette spil er sket i den nuværende uge
+                boolean erDenneUge = !entryDato.isBefore(startUge) && !entryDato.isAfter(slutUge);
 
-            if (p[0].equalsIgnoreCase(currentUser)) { // Hvis det er den nuværende bruger, opdateres lifetime stats
-                lifGms++; 
-                lifM = Math.max(lifM, scoreVal);
-                lifG += (p.length > 3) ? Integer.parseInt(p[3]) : 0;
-                lifF += (p.length > 4) ? Integer.parseInt(p[4]) : 0;
-                lifR += (p.length > 5) ? Integer.parseInt(p[5]) : 0;
+                ScoreEntry se = new ScoreEntry(name, scoreVal, mName);
+                overallLeaderboard.add(se);
+
+                if (mName.equalsIgnoreCase(mapNames[selectedMap])) {
+                    mapLeaderboard.add(se);
+                    if (name.equalsIgnoreCase(currentUser)) personalLeaderboard.add(se);
+                }
+
+                // Opdater stats for den nuværende bruger
+                if (name.equalsIgnoreCase(currentUser)) {
+                    // ALL-TIME: Bruges til Level/AP 
+                    careerHighScore = Math.max(careerHighScore, scoreVal);
+                    allTimeGhosts += Integer.parseInt(p[3]);
+                    allTimeFruits += Integer.parseInt(p[4]);
+                    allTimeRounds += Integer.parseInt(p[5]);
+                    
+                    // WEEKLY: Bruges til Challenges 
+                    if (erDenneUge) {
+                        careerGms++; 
+                        careerGhosts += Integer.parseInt(p[3]);      
+                        careerFruitsTotal += Integer.parseInt(p[4]); 
+                        careerRounds += Integer.parseInt(p[5]);
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("Fejl i linje: " + l);
             }
         }
         
@@ -1223,99 +1418,99 @@ private void drawSpecificFruitIcon(Graphics2D g2, String type, int x, int y, boo
         mapLeaderboard.sort((a, b) -> b.score - a.score);
         personalLeaderboard.sort((a, b) -> b.score - a.score);
 
-        // Beregn total AP
-        totalAP = lifGms + calcAP(lifG, new int[]{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000}) 
-                         + calcAP(lifF, new int[]{1, 2, 5, 10, 20, 50, 75, 100, 150, 200}) 
-                         + calcAP(lifR, new int[]{1, 2, 5, 10, 20, 50, 75, 100, 150, 200}) 
-                         + calcAP(lifM, new int[]{1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 750000, 1000000});
+        // Beregn total AP baseret på ALL-TIME stats 
+        totalAP = calcAP(allTimeGhosts, new int[]{10, 50, 100, 250, 500, 1000, 2500, 5000, 7500, 10000}) 
+         + calcAP(allTimeFruits, new int[]{1, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000}) 
+         + calcAP(allTimeRounds, new int[]{1, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000}) 
+         + calcAP(careerHighScore, new int[]{1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 750000, 1000000});
 
+        // Level op baseret på total AP
         int newUserLevel = (totalAP / 100) + 1;
+        if (oldUserLevel == 1) {
+            oldUserLevel = newUserLevel;
+            return; 
+        }
+        if (newUserLevel > oldUserLevel) {
+            coins += (newUserLevel - oldUserLevel) * 10;
+            oldUserLevel = newUserLevel;
+            updateUserData();
+        }
 
-if (newUserLevel > oldUserLevel) {
-    if (oldUserLevel > 0) { // Undgå mønter ved allerførste login
-        coins += 10; // +10 Coins for hver level-up
+    } catch (Exception e) {
+        e.printStackTrace();
     }
-    oldUserLevel = newUserLevel;
-    updateUserData();
 }
-
-    } catch (Exception e) { e.printStackTrace(); }
-}
-
-
-    
     private void drawStatistics(Graphics g) {
     Graphics2D g2 = (Graphics2D) g;
     
-    // Baggrundsramme
+    // Lokale tællere til denne  visning
+    int sGms = 0, sGho = 0, sFru = 0, sRnd = 0, sMax = 0; //kerne-statistikker
+    int[] sFruTypes = new int[10];
+
+    // Indlæs og filtrer data
+    try (BufferedReader br = new BufferedReader(new FileReader("leaderboard.txt"))) { //læser leaderboard og filtrerer for den nuværende bruger og den valgte fane
+        String l;
+        while ((l = br.readLine()) != null) { //går gennem hver linje i leaderboardet
+            String[] p = l.split(":");
+            if (p.length < 3 || !p[0].equalsIgnoreCase(currentUser)) continue;
+
+            // Tjek om rækken matcher den valgte fane (0 = Overall, 1-3 = Maps)
+            boolean match = (statsSelectedTab == 0) || p[2].equalsIgnoreCase(mapNames[statsSelectedTab - 1]);
+
+            if (match) {
+                sGms++;
+                sMax = Math.max(sMax, Integer.parseInt(p[1])); // Opdater karriere-highscore baseret på AP
+                sGho += Integer.parseInt(p[3]);
+                sFru += Integer.parseInt(p[4]);
+                sRnd += Integer.parseInt(p[5]);
+                // Tæl specifikke frugttyper
+                if (p.length >= 18) {
+                    for (int i = 0; i < 10; i++) sFruTypes[i] += Integer.parseInt(p[i + 8]);
+                }
+            }
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+
+    // Tegning af rammen
     g2.setColor(new Color(0, 0, 0, 215));
     g2.fillRect(80, 120, 680, 720);
     g2.setColor(new Color(0, 150, 255));
     g2.setStroke(new BasicStroke(3));
     g2.drawRect(80, 120, 680, 720);
 
-    // Titel baseret på valgt fane (Overall eller Map-specifik)
+    // Titel (Skifter navn baseret på fane)
     g2.setColor(Color.YELLOW);
-    g2.setFont(new Font("Impact", Font.PLAIN, 45));
+    g2.setFont(new Font("Impact", Font.PLAIN, 40));
     String title = (statsSelectedTab == 0) ? "OVERALL CAREER" : mapNames[statsSelectedTab-1] + " STATS";
-    g2.drawString(title, 420 - (g2.getFontMetrics().stringWidth(title) / 2), 95);
+    g2.drawString(title, 420 - (g2.getFontMetrics().stringWidth(title) / 2), 100);
 
-    int labelX = 120, y = 210, gap = 32;
-    int ownedSkinsCount = (ownedItems == null || ownedItems.isEmpty()) ? 0 : ownedItems.split(",").length;
-
-    // coins og skins sektion
-    g2.setFont(new Font("Impact", Font.PLAIN, 22));
-    g2.setColor(Color.CYAN); 
-    g2.drawString("FINANCES & COLLECTION", labelX, y); 
+    // Vis statistikker
+    int lx = 120, y = 220, gap = 35;
+    g2.setFont(new Font("Monospaced", Font.BOLD, 18));
+    g2.setColor(Color.CYAN);
+    g2.drawString("CORE RECORDS", lx, y);
     
-    y += 30;
-    g2.setFont(new Font("Monospaced", Font.BOLD, 17));
     g2.setColor(Color.WHITE);
-    drawStatLine(g2, "CURRENT COINS:", String.valueOf(coins), labelX, y);
-    drawStatLine(g2, "LIFETIME COINS:", String.valueOf(lifetimeCoins), labelX, y += gap);
-    drawStatLine(g2, "SKINS OWNED:", ownedSkinsCount + " / 10", labelX, y += gap);
+    drawStatLine(g2, "GAMES PLAYED:", String.valueOf(sGms), lx, y += gap);
+    drawStatLine(g2, "BEST SCORE:", String.valueOf(sMax), lx, y += gap);
+    drawStatLine(g2, "GHOSTS EATEN:", String.valueOf(sGho), lx, y += gap);
+    drawStatLine(g2, "LEVELS CLEARED:", String.valueOf(sRnd), lx, y += gap);
+    drawStatLine(g2, "FRUITS TOTAL:", String.valueOf(sFru), lx, y += gap);
 
-    // total progress sektion
-    y += 45;
-    g2.setFont(new Font("Impact", Font.PLAIN, 22));
-    g2.setColor(Color.CYAN); 
-    g2.drawString("TOTAL PROGRESS", labelX, y); 
-    
-    y += 30;
-    g2.setFont(new Font("Monospaced", Font.BOLD, 17));
-    g2.setColor(Color.WHITE);
-    drawStatLine(g2, "GAMES PLAYED:", String.valueOf(careerGms), labelX, y);
-    drawStatLine(g2, "TOTAL GHOSTS:", String.valueOf(careerGhosts), labelX, y += gap);
-    drawStatLine(g2, "TOTAL FRUITS:", String.valueOf(careerFruitsTotal), labelX, y += gap);
-    drawStatLine(g2, "LEVELS CLEARED:", String.valueOf(careerRounds), labelX, y += gap);
-    
-
-    // frugt
-    y += 45;
-    g2.setFont(new Font("Impact", Font.PLAIN, 22));
-    g2.setColor(Color.CYAN); 
-    g2.drawString("DETAILED RECORDS", labelX, y); 
-    y += 35;
-    
-    g2.setFont(new Font("Monospaced", Font.BOLD, 15));
-    g2.setColor(Color.WHITE);
-    g2.drawString("Visit the ACHIEVEMENTS menu for detailed fruit tracking!", labelX, y);
+    // Frugt
+    y += 50;
+    g2.setColor(Color.CYAN);
+    g2.drawString("DETAILED FRUIT COUNT", lx, y);
     String[] fNames = {"CHERRY", "STRAWBERRY", "APPLE", "BANANA", "ORANGE", "BELL", "KEY", "STAR", "HEART", "CROWN"};
-int startY = y; 
-
-for (int i = 0; i < 5; i++) {
-    // Venstre kolonne (Frugt 0-4) 
-    drawFruitStatRow(g2, fNames[i], careerFruits[i], i + 1, 120, startY += 35);
     
-    // Højre kolonne (Frugt 5-9) 
-    drawFruitStatRow(g2, fNames[i+5], careerFruits[i+5], i + 6, 420, startY);
-
+    int fruitY = y + 10;
+    for (int i = 0; i < 5; i++) {
+        drawFruitStatRow(g2, fNames[i], sFruTypes[i], i + 1, lx, fruitY += 35);
+        drawFruitStatRow(g2, fNames[i+5], sFruTypes[i+5], i + 6, lx + 320, fruitY);
+    }
 }
-}
-
-String currentMap = equippedMap.equals("PINK_MAP") ? "PINK_MAP" : "DEFAULT";
+String currentMap = equippedMap.equals("PINK_MAP") ? "PINK_MAP" : "DEFAULT"; // Vælger hvilket map der skal tegnes i butikken baseret på hvad der er udstyret
 String currentGreen = equippedMap.equals("GREEN_MAP") ? "GREEN_MAP" : "DEFAULT";
-
 
 private void drawStoreItem(Graphics2D g2, String name, int price, int x, int y, String current, String id) {
     boolean owned = ownedItems.contains(id); //tjekker om den er ejet
@@ -1367,11 +1562,42 @@ else if (id.equals("PINK_MLP")) {
 }
 
     else if (id.equals("ROBOT")) { g2.setColor(Color.LIGHT_GRAY); g2.fillRect(ix, iy, 45, 45); g2.setColor(Color.RED); g2.fillRect(ix+5, iy+10, 10, 5); g2.fillRect(ix+30, iy+10, 10, 5); }
-    else if (id.equals("PINK_MAP") || id.equals("GREEN")) { 
-        g2.setColor(id.equals("PINK_MAP") ? new Color(255, 105, 180) : Color.GREEN);
-        g2.setStroke(new BasicStroke(3)); g2.drawRect(ix, iy, 40, 40); 
+    else if (id.equals("PINK_MAP") || id.equals("GREEN_MAP")) { 
+    // Vi vælger farven baseret på om det er det lyserøde eller grønne map
+    g2.setColor(id.equals("PINK_MAP") ? new Color(255, 105, 180) : Color.GREEN);
+    
+    g2.setStroke(new BasicStroke(3)); 
+    // Vi tegner en lille firkant der illustrerer mapns vægge
+    g2.drawRect(ix, iy, 40, 40); 
+    g2.drawRect(ix + 8, iy + 8, 24, 24); // En ekstra ramme indeni for detaljen
+}
+    else if (id.equals("COIN")) {
+    g2.setColor(new Color(255, 215, 0)); 
+    g2.fillOval(ix, iy, 40, 40);
+    g2.setColor(Color.BLACK);
+    g2.drawString("$", ix + 14, iy + 28);
+}
+else if (id.equals("CAKE")) {
+    g2.setColor(new Color(255, 105, 180));
+    g2.fillRect(ix, iy + 15, 45, 25); // Kagebund
+    g2.setColor(Color.WHITE);
+    g2.fillRect(ix, iy + 10, 45, 8);  // Glasur
+    g2.setColor(Color.RED);
+    g2.fillOval(ix + 18, iy + 2, 10, 10); // Bær på toppen
+}
+else if (id.equals("GEAR")) {
+    g2.setColor(Color.GRAY);
+    g2.fillOval(ix, iy, 45, 45); 
+    g2.setColor(Color.BLACK);
+    g2.fillOval(ix + 15, iy + 15, 15, 15); 
+    for(int i=0; i<8; i++) {
+        g2.setColor(Color.GRAY);
+        double angle = Math.toRadians(i * 45);
+        int tx = (int)(ix + 18 + Math.cos(angle) * 22);
+        int ty = (int)(iy + 18 + Math.sin(angle) * 22);
+        g2.fillRect(tx, ty, 8, 8);
     }
-
+}
     // Tekst
     g2.setColor(Color.WHITE);
     g2.setFont(new Font("Arial", Font.BOLD, 18));
@@ -1395,9 +1621,6 @@ private void drawFruitStatRow(Graphics2D g2, String name, int count, int fLvl, i
     g2.setColor(Color.YELLOW);
     g2.drawString(String.valueOf(count), x + 210 - g2.getFontMetrics().stringWidth(String.valueOf(count)), y);
 }
-
-
-
 private void drawStatLine(Graphics2D g2, String label, String value, int x, int y) {
     g2.drawString(label, x, y);
     // Højrestiller værdien ved x=680
@@ -1470,7 +1693,7 @@ private void drawStatLine(Graphics2D g2, String label, String value, int x, int 
         else if (i == 2) g2.setColor(new Color(205, 127, 50));  // Bronze
         else g2.setColor(Color.WHITE);
 
-        // Tegn Rank ")
+        // Tegn Rank 
         g2.drawString(String.format("%2d.", i + 1), 110, y);
         
         // Tegn Navn 
@@ -1615,28 +1838,35 @@ private void drawSimpleAchRow(Graphics2D g2, String title, String[] names, boole
 }
 
     private void startHeltForfra() {
+    // nustil ved et nyt run
+    score = 0;             
+    sessionGhosts = 0;     
+    sessionFruits = 0;
+    sessionFruitCounts = new int[10];
+    
+    // Nulstil spils tilstands
     frightenedTimer = 0; 
     fruitActive = false;
     pelletsEatenInLevel = 0;
     fruit1Spawned = false;
     fruit2Spawned = false;
-    sessionFruitCounts = new int[10];
 
-    if (lives < 1 || score == 0) { 
-        score = 0; lives = 3; level = 1; difficulty = 0.3; 
-        sessionGhosts = 0; sessionFruits = 0;
-        sessionStartTime = System.currentTimeMillis();
-        levelStartTime = System.currentTimeMillis(); 
-        fastestRound = 9999; 
+    // Reset liv og level hvis man er død
+    if (lives < 1) { 
+        lives = 3; 
+        level = 1; 
+        difficulty = 0.3; 
     }
     
-    for (int r = 0; r < 21; r++) System.arraycopy(allMaps[selectedMap][r], 0, bane[r], 0, 21);
+    // Indlæs mapn og flyt figurerne
+    for (int r = 0; r < 21; r++) System.arraycopy(allMaps[selectedMap][r], 0, map[r], 0, 21);
     respawn();
 }
+
     private void respawn() {
         pacX = 400; pacY = 600; directionX = 0; directionY = 0; nextDireX = 0; nextDireY = 0;
         ghosts.clear();
-        // Alle spøgelser starter ved "døren" (400, 320)
+        // Alle spøgelser er ved deres lille hytte 
         ghosts.add(new Ghost(400, 320, Color.RED, speed, 400, 320));
         ghosts.add(new Ghost(400, 320, Color.PINK, speed, 400, 320));
         ghosts.add(new Ghost(400, 320, Color.CYAN, speed, 400, 320));
@@ -1647,45 +1877,78 @@ private void drawSimpleAchRow(Graphics2D g2, String title, String[] names, boole
     }
 
     private void checkWin() {
+    if (isTransitioning) return; // gør så at den tjekker ikke for win hvis den allerede er i gang med at transitionere til næste level,
+
     boolean dotsLeft = false;
     for (int r = 0; r < 21; r++) {
         for (int c = 0; c < 21; c++) {
-            if (bane[r][c] == 2 || bane[r][c] == 3) dotsLeft = true;
+            if (map[r][c] == 2 || map[r][c] == 3) {
+                dotsLeft = true;
+                break;
+            }
         }
     }
 
     if (!dotsLeft) {
-        int timeForThisRound = (int)((System.currentTimeMillis() - levelStartTime) / 1000);
-        if (timeForThisRound > 0 && timeForThisRound < fastestRound) {
-            fastestRound = timeForThisRound;
+        isTransitioning = true; 
+
+        // Beregner AP BONUS baseret på level
+        int levelAPBonus = 0;
+        if (level >= 1 && level <= 2) levelAPBonus = 1;      // Runde 1-2
+        else if (level == 3) levelAPBonus = 3;               // Runde 3
+        else if (level >= 4 && level <= 5) levelAPBonus = 5; // Runde 4-5
+        else if (level >= 6 && level <= 7) levelAPBonus = 10;// Runde 6-7
+        else if (level >= 8 && level <= 9) levelAPBonus = 15;// Runde 8-9
+        else if (level >= 10) levelAPBonus = 25;             // Runde 10+
+
+        totalAP += levelAPBonus;
+
+        // Tjek for Level
+        int newUserLevel = (totalAP / 100) + 1;
+        if (newUserLevel > oldUserLevel) {
+            coins += 10; // Bonus for at stige i level
+            oldUserLevel = newUserLevel;
         }
 
-        if (!diedThisLevel && level > highestNoDeathEver) highestNoDeathEver = level;
+        // Beregn mønter-bonus for gennemført level
+        int roundBonus = 0;
+        if (level >= 1 && level <= 3) roundBonus = 1;
+        else if (level >= 4 && level <= 6) roundBonus = 5;
+        else if (level >= 7 && level <= 8) roundBonus = 10;
+        else if (level == 9) roundBonus = 25;
+        else if (level >= 10) roundBonus = 50;
 
+        coins += roundBonus;
+
+        // Giv ekstra liv (maks 5)
         if (lives < 5) lives++;
-        if (lives == 5) {
-            achMaxedOut = true; 
-            if (level % 5 == 0) score += 2500;
-        }
 
+        // Opdater score og level
         score += diedThisLevel ? 500 : 1000;
         level++;
         difficulty += 0.1;
         diedThisLevel = false;
-        levelStartTime = System.currentTimeMillis(); 
-        startHeltForfra();
+
+        // Nulstil session-statistikker så de ikke tæller dobbelt i næste level
+        sessionGhosts = 0;
+        sessionFruits = 0;
+        sessionFruitCounts = new int[10];
+        fruit1Spawned = false;
+        fruit2Spawned = false;
+        fruitActive = false;
+
+        // Genindlæs banen og nulstil figurer
+        for (int r = 0; r < 21; r++) {
+            System.arraycopy(allMaps[selectedMap][r], 0, map[r], 0, 21);
+        }
+        respawn(); 
+
+        // Gem fremskridt til users.txt
+        updateUserData();
+        
+        isTransitioning = false; // Lås op igen så næste level kan spilles
     }
-    int roundBonus = 0;
-if (level >= 1 && level <= 3) roundBonus = 1;
-else if (level >= 4 && level <= 6) roundBonus = 5;
-else if (level >= 7 && level <= 8) roundBonus = 10;
-else if (level == 9) roundBonus = 25;
-else if (level >= 10) roundBonus = 50;
-
-coins += roundBonus;
-updateUserData();
 }
-
 
     private void drawControls(Graphics g) { //tegner inde i en menu med controls
         Graphics2D g2 = (Graphics2D) g;
@@ -1709,18 +1972,23 @@ updateUserData();
         g.drawString("Q - QUIT GAME", 310, 580);
     }
     private void checkScore() {
-    saveLeaderboards();
+    saveLeaderboards(); // Gemmer de f.eks. 4 spøgelser du lige har spist
     
-    loadLeaderboards(); 
+    // NULSTIL session-stats her, så de ikke "overlever" til næste gemning
+    sessionGhosts = 0;
+    sessionFruits = 0;
+    sessionFruitCounts = new int[10];
+
+    loadLeaderboards(); // Læser de nye stats ind i dine career-tællere
     
     checkDailyDone();
     checkWeeklyProgress();
     
     retryBtn.setVisible(true);
     menuBtn.setVisible(true);
-    
     repaint();
 }
+
 
 private void drawPlayerIcon(Graphics2D g2) {
     int x = 30, y = 30; 
@@ -1753,7 +2021,7 @@ private void drawPlayerIcon(Graphics2D g2) {
     g2.setStroke(new BasicStroke(2));
     g2.drawRect(x + iconSize + 15, y + 35, barW, barH);
     
-    // 4. ap tekst ved baren
+    // ap tekst ved baren
     g2.setFont(new Font("Arial", Font.BOLD, 12));
     g2.setColor(Color.WHITE);
     String apText = progress + " / 100 AP";
@@ -1765,7 +2033,7 @@ private void drawPlayerIcon(Graphics2D g2) {
 private void drawPoints(Graphics g) {
     Graphics2D g2 = (Graphics2D) g;
     
-    // 1. baggrundboks
+    // baggrundboks
     g2.setColor(new Color(0, 0, 0, 220));
     g2.fillRect(100, 150, 640, 650);
     g2.setColor(new Color(0, 150, 255));
@@ -1820,7 +2088,6 @@ private void drawDetailedGhost(Graphics2D g2, int x, int y, Color c) {
     for (int i = 0; i < 3; i++) g2.fillOval(x + (i * 17), y + 35, 16, 12);
 }
 
-
 private String formatValue(int v) { //formaterer store tal i leaderboardet til fx 1.2K eller 3.4M for at det ikke skal fylde så meget   
     if (v >= 1000000) return (v / 1000000) + "M";
     if (v >= 1000) return (v / 1000) + "K";
@@ -1829,29 +2096,20 @@ private String formatValue(int v) { //formaterer store tal i leaderboardet til f
 
 private void saveLeaderboards() {
     try (PrintWriter pw = new PrintWriter(new FileWriter("leaderboard.txt", true))) {
+        String today = LocalDate.now().toString(); // Gemmer "2026-05-07"
+
         StringBuilder sb = new StringBuilder();
+        sb.append(currentUser).append(":") // p[0]
+  .append(score).append(":")       // p[1]
+  .append(mapNames[selectedMap]).append(":") // p[2]
+  .append(sessionGhosts).append(":") // p[3]
+  .append(sessionFruits).append(":") // p[4]
+  .append(level).append(":")       // p[5]
+  .append(today);
 
-        // byg linjen i formatet: USER:SCORE:MAP:GHOSTS:FRUITS:LEVEL:MAXNODEATH:FRUIT1:FRUIT2:...:FRUIT10
-        sb.append(currentUser).append(":")
-          .append(score).append(":")
-          .append(mapNames[selectedMap]).append(":")
-          .append(sessionGhosts).append(":")
-          .append(sessionFruits).append(":")
-          .append(level).append(":");
-
-        sb.append("0");
-
-        // tilføj frugtstatistikkerne for denne session
-        for (int count : sessionFruitCounts) {
-            sb.append(":").append(count);
-        }
-
-        // gem efter frugtstatistikkerne om ghostbuster og maxed out er klaret i denne session
+        for (int count : sessionFruitCounts) sb.append(":").append(count);
         pw.println(sb.toString());
-
-    } catch (Exception e) {
-        e.printStackTrace();
-    }
+    } catch (Exception e) { e.printStackTrace(); }
 }
 
     private void handleAddFriend() {
@@ -1915,11 +2173,17 @@ private void saveLeaderboards() {
 
     private void spawnFruit() {
     Random rand = new Random();
+    int r, c;
     while (true) {
-        int r = rand.nextInt(21);
-        int c = rand.nextInt(21);
-        // Sørg for at den kun lander på en sti (0) og ikke i en væg (1)
-        if (bane[r][c] == 0) {
+        // Vi begrænser rækker (r) og kolonner (c) til midten af mapn
+        // r: 2-18 og c: 2-18 holder den væk fra kanterne og tunnelerne
+        r = 2 + rand.nextInt(17); 
+        c = 2 + rand.nextInt(17);
+
+        // Tjek 1: Det skal være en sti (0)
+        // Tjek 2: Det må IKKE være inde i spøgelseshuset (rækkerne 8-12 og kolonne 7-13)
+        boolean iGhostHouse = (r >= 8 && r <= 12 && c >= 7 && c <= 13);
+        if (map[r][c] == 0 && !iGhostHouse) {
             fruitX = c;
             fruitY = r;
             fruitActive = true;
@@ -1941,69 +2205,78 @@ private void saveLeaderboards() {
     }
     
     void respawn() {  //
-        this.x = sX; this.y = sY; // når et spøgelse bliver spist, skal det respawne ved startpositionen og være i normal tilstand (ikke bange)
+        this.x = sX; this.y = sY; // når et spøgelse bliver spist, skal det respawne ved startpositionen og være i normal tilstand 
         this.dx = 0; this.dy = 0; 
         this.isFrightenedLocal = false; 
     }
 
-   public void update(int targetX, int targetY, int[][] bane, int gridSize, double difficulty, int id, Ghost blinky) {
+   public void update(int targetX, int targetY, int[][] map, int gridSize, double difficulty, int id, Ghost blinky) {
+    // 1. TUNNEL / WRAP LOGIK FOR SPØGELSER
+    if (x < -20) { 
+        x = 840; 
+    } else if (x > 840) { 
+        x = -20; 
+    }
+
+    // bevægelse sker når spøgelset er i et kryds, så det ikke skifter retning midt i en gang
     if (x % gridSize == 0 && y % gridSize == 0) {
         int r = y / gridSize;
         int c = x / gridSize;
-
-        // Bestem målet (Target) baseret på spøgelsets ID (Personlighed)
-        int tx = targetX, ty = targetY;
         
-        if (id == 1) { // PINKY: Går efter 4 felter foran Pac-Man (Ambush)
-            tx = targetX + (directionX * 4);
-            ty = targetY + (directionY * 4);
-        } else if (id >= 2) { // INKY/CLYDE: Mere tilfældige/blandede
-            if (Math.hypot(x - targetX, y - targetY) > 200) {
-                tx = targetX; ty = targetY;
-            } else {
-                tx = 0; ty = 940; // Trækker sig tilbage til hjørnet
-            }
-        }
-
-        int[][] dirs = {{0, -4}, {0, 4}, {-4, 0}, {4, 0}};
-        int bestIdx = -1;
-        double minDistance = Double.MAX_VALUE;
-
-        for (int i = 0; i < 4; i++) {
-            // ingen 180 graders vending
-            if (dx == -dirs[i][0] && dy == -dirs[i][1]) continue;
-
-            int nr = r + (dirs[i][1] / 4);
-            int nc = c + (dirs[i][0] / 4);
-
-            if (nr >= 0 && nr < 21 && nc >= 0 && nc < 21 && bane[nr][nc] != 1) {
-                double dist = Math.hypot((x + dirs[i][0]) - tx, (y + dirs[i][1]) - ty);
-                
-                // Difficulty: Jo højere, jo sjældnere tager de en tilfældig vej
-                if (Math.random() > difficulty) dist = Math.random() * 1000;
-
-                if (dist < minDistance) {
-                    minDistance = dist;
-                    bestIdx = i;
+        // tænker kun inde i mappet, så det ikke prøver at finde en vej når det er i tunnelen
+        if (c >= 0 && c < 21) {
+            int tx = targetX, ty = targetY;
+            
+            // PINKY: Ambush logik. virker ved at den sigter 4 punkter foran pacman
+            if (id == 1) { 
+                tx = targetX + (directionX * 4);
+                ty = targetY + (directionY * 4);
+            } 
+            // INKY/CLYDE: Blandet logik. Virker ved at den gør lidt blandet
+            else if (id >= 2) {
+                if (Math.hypot(x - targetX, y - targetY) > 200) {
+                    tx = targetX; ty = targetY;
+                } else {
+                    tx = 0; ty = 940; 
                 }
             }
-        }
 
-        if (bestIdx != -1) {
-          
-            dx = dirs[bestIdx][0];
-            dy = dirs[bestIdx][1];
-        } else {
-            dx = -dx; dy = -dy; // Vend om hvis fanget
+            int[][] dirs = {{0, -4}, {0, 4}, {-4, 0}, {4, 0}};
+            int bestIdx = -1;
+            double minDistance = Double.MAX_VALUE;
+
+            for (int i = 0; i < 4; i++) {
+                // Undgå 180 graders vending (de må ikke vende om medmindre de rammer en væg)
+                if (dx == -dirs[i][0] && dy == -dirs[i][1]) continue;
+
+                int nr = r + (dirs[i][1] / 4);
+                int nc = c + (dirs[i][0] / 4);
+
+                // Tjek om det næste felt er en vej (ikke en væg)
+                if (nr >= 0 && nr < 21 && nc >= 0 && nc < 21 && map[nr][nc] != 1) {
+                    double dist = Math.hypot((x + dirs[i][0]) - tx, (y + dirs[i][1]) - ty);
+                    
+                    if (Math.random() > difficulty) dist = Math.random() * 1000;
+
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        bestIdx = i;
+                    }
+                }
+            }
+
+            if (bestIdx != -1) {
+                dx = dirs[bestIdx][0];
+                dy = dirs[bestIdx][1];
+            } else {
+                dx = -dx; dy = -dy; 
+            }
         }
     }
+    
     x += dx;
     y += dy;
 }
-
-
-
-
 
     void draw(Graphics g, int t, String skin) {
         Graphics2D g2 = (Graphics2D) g;
@@ -2048,36 +2321,83 @@ public int calcAP(int v, int[] m) {
     return s; 
 }
 
-private void drawStore(Graphics2D g2) { // vis i butikken om du ejer nogle items og har dem equipped så du ikke skal gætte
-    String currentMap = equippedMap.equals("PINK_MAP") ? "PINK_MAP" : "DEFAULT";
-String currentGreen = equippedMap.equals("GREEN_MAP") ? "GREEN_MAP" : "DEFAULT";
+private void drawStore(Graphics2D g2) {
+    // gør så at shoppen er fast og ikke scroller med varerne
     g2.setColor(Color.BLACK);
-    g2.fillRect(0, 0, 840, 250);
-    drawTitle(g2, "ARCADE STORE");
-    g2.setFont(new Font("Impact", Font.PLAIN, 30));
+    g2.fillRect(0, 0, 840, 320); 
+
+    // gør så level og coin i toppen også er fast og ikke scroller med varerne
+    drawPlayerIcon(g2); // Tegner LVL og XP-bar øverst til venstre
+    
+    g2.setFont(new Font("Impact", Font.PLAIN, 28));
     g2.setColor(Color.YELLOW);
-    g2.drawString("YOUR COINS: " + coins, 320, 220);
+    String coinTxt = "COINS: " + coins;
+    int coinX = 800 - g2.getFontMetrics().stringWidth(coinTxt);
+    g2.drawString(coinTxt, coinX, 55);
+    
+    // Guldmønt-ikon ved siden af coins
+    g2.setColor(new Color(255, 215, 0));
+    g2.fillOval(coinX - 35, 34, 24, 24);
 
+    // tegner titlen
+    drawTitle(g2, "ARCADE STORE");
+
+    // laver faner
+    String[] tabs = {"PACMAN", "GHOSTS", "MAPS", "PELLETS"};
+    int tabY = 260; 
+    for (int i = 0; i < tabs.length; i++) {
+        int tx = 55 + (i * 185);
+        
+        // skifter farve på fanen hvis den er valgt
+        g2.setColor(storeSelectedTab == i ? new Color(0, 80, 200) : new Color(30, 30, 30));
+        g2.fillRoundRect(tx, tabY, 175, 45, 12, 12);
+        
+        g2.setColor(storeSelectedTab == i ? Color.YELLOW : Color.CYAN);
+        g2.setStroke(new BasicStroke(2));
+        g2.drawRoundRect(tx, tabY, 175, 45, 12, 12);
+        
+        g2.setFont(new Font("Impact", Font.PLAIN, 20));
+        int textWidth = g2.getFontMetrics().stringWidth(tabs[i]);
+        g2.drawString(tabs[i], tx + (87 - textWidth/2), tabY + 30);
+    }
+
+    // gør så at varerne i butikken kun tegnes inden for det "vindue" der er mellem fanerne og tilbage-knappen, og at de scroller indenfor det område
     Shape originalClip = g2.getClip();
-    g2.setClip(50, 250, 740, 600); 
-    g2.translate(0, -storeScrollY + 250); 
-    drawStoreItem(g2, "BLUE PAC", 50, 100, 50, pacColor, "BLUE");
-    drawStoreItem(g2, "RED PAC", 50, 420, 50, pacColor, "RED");
+    // Vi sætter 'vinduet' som varerne kan ses i (mellem faner og bund-knap)
+    g2.setClip(50, 320, 740, 520); 
     
-    drawStoreItem(g2, "MLP PINK", 100, 100, 250, pacColor, "PINK_MLP");
-    drawStoreItem(g2, "ROBOTS", 150, 420, 250, ghostSkin, "ROBOT");
-    
-   drawStoreItem(g2, "PINK MAP", 200, 100, 450, currentMap, "PINK_MAP");
-drawStoreItem(g2, "GREEN MAP", 200, 420, 450, currentGreen, "GREEN_MAP");
+    // Flyt tegne-koordinaterne baseret på scroll
+    g2.translate(0, -storeScrollY + 320); 
 
-    g2.translate(0, storeScrollY - 250);
+    // Vis indhold baseret på hvilken fane der er klikket på
+    if (storeSelectedTab == 0) { // PACMAN
+        drawStoreItem(g2, "BLUE PAC", 50, 100, 30, pacColor, "BLUE");
+        drawStoreItem(g2, "RED PAC", 50, 420, 30, pacColor, "RED");
+        drawStoreItem(g2, "MLP PINK", 100, 100, 210, pacColor, "PINK_MLP");
+    } 
+    else if (storeSelectedTab == 1) { // GHOSTS
+        drawStoreItem(g2, "ROBOTS", 150, 100, 30, ghostSkin, "ROBOT");
+    } 
+    else if (storeSelectedTab == 2) { // MAPS
+        drawStoreItem(g2, "PINK MAP", 200, 100, 30, equippedMap, "PINK_MAP");
+        drawStoreItem(g2, "GREEN MAP", 200, 420, 30, equippedMap, "GREEN_MAP");
+    } 
+    else if (storeSelectedTab == 3) { // PELLETS
+        drawStoreItem(g2, "GOLD COINS", 150, 100, 30, pelletSkin, "COIN");
+        drawStoreItem(g2, "CAKE PARTY", 200, 420, 30, pelletSkin, "CAKE");
+        drawStoreItem(g2, "GEAR HEAD", 250, 100, 210, pelletSkin, "GEAR");
+    }
+
+    // Nulstil koordinater og klip, så resten af UI'en tegnes normalt
+    g2.translate(0, storeScrollY - 320);
     g2.setClip(originalClip);
+
+    // 6. TILBAGE-KNAP (Låst fast i bunden)
+    backBtn.setVisible(true);
+    backBtn.setBounds(330, 850, 160, 45);
 }
-
-
-
 private void updateUserData() {
-    ArrayList<String> lines = new ArrayList<>();
+    ArrayList<String> lines = new ArrayList<>(); // gør så den gemmer linjer i en liste og skriver listen i filen, i stedet for at åbne og lukke filen for hver linje
     
     try (BufferedReader br = new BufferedReader(new FileReader("users.txt"))) { // åbner filen for at læse den eksisterende data
         String l;
@@ -2102,7 +2422,6 @@ private void updateUserData() {
         }
     } catch (Exception e) { e.printStackTrace(); }
 }
-
 
 private void applySkins() {
     if (equippedMap.equals("PINK_MAP")) {
@@ -2137,7 +2456,7 @@ weeklyChallengeDescs[4] = "Get " + formatValue(weeklyChallengeGoals[4]) + " poin
 private void saveWeeklyStatus() {
     try (PrintWriter pw = new PrintWriter(new FileWriter("weekly.txt"))) {
         java.util.Calendar cal = java.util.Calendar.getInstance();
-        // Skaber uge-nøgle: f.eks. "17-2024"
+        // Skaber uge-nøgle: f.eks. "07-2026"
         String weekKey = cal.get(java.util.Calendar.WEEK_OF_YEAR) + "-" + cal.get(java.util.Calendar.YEAR);
         
         pw.print(currentUser + ":" + weekKey);
@@ -2174,24 +2493,20 @@ private void loadWeeklyStatus() {
         if (weeklyChallengeDone[i]) continue;
         
         boolean success = false;
-        // Vi bruger tallene direkte fra loadLeaderboards()
-        if (i == 0 && careerGhosts >= weeklyChallengeGoals[i]) success = true;
-        if (i == 1 && careerRounds >= weeklyChallengeGoals[i]) success = true;
-        if (i == 2 && careerFruitsTotal >= weeklyChallengeGoals[i]) success = true; 
-        if (i == 3 && careerGms >= weeklyChallengeGoals[i]) success = true;
+        // tjekker om målet er nået for hver. og så sætter success til true hvis det er, og så kan den tilføje belønningen og gør den done.
+        if (i == 0 && weeklyGhosts >= weeklyChallengeGoals[i]) success = true; 
+        if (i == 1 && weeklyRounds >= weeklyChallengeGoals[i]) success = true;
+        if (i == 2 && weeklyFruits >= weeklyChallengeGoals[i]) success = true; 
+        if (i == 3 && weeklyGames >= weeklyChallengeGoals[i]) success = true;
         if (i == 4 && score >= weeklyChallengeGoals[i]) success = true; 
 
         if (success) {
             weeklyChallengeDone[i] = true;
             coins += weeklyChallengeRewards[i];
-            totalAP += (i == 4 ? 100 : 50);
             saveWeeklyStatus();
-            JOptionPane.showMessageDialog(this, "WEEKLY CHALLENGE FÆRDIG!\nModtaget " + weeklyChallengeRewards[i] + " Coins");
         }
     }
 }
-
-
 
 private void checkDailyDone() {
     if (dailyChallengeDone) return;
@@ -2206,7 +2521,7 @@ private void checkDailyDone() {
         totalAP += 25;
         coins += 25;
         saveDailyCompletion();
-        JOptionPane.showMessageDialog(this, "DAILY CHALLENGE FÆRDIG!\n+25 AP & +25 Coins");
+        JOptionPane.showMessageDialog(this, "DAILY CHALLENGE FINISHED!\n+25 AP & +25 Coins");
     }
 }
 private void drawPinkPonySkin(Graphics2D g2) {
@@ -2248,5 +2563,54 @@ private void drawPinkPonySkin(Graphics2D g2) {
     g2.fillOval(eyeX + (flip == 1 ? 3 : 1), pacY + 8, 3, 5);
 }
 
+private Clip loadSound(String filename) {
+    try {
+        File file = new File(filename); // tjekker om filen findes.
+        if (!file.exists()) {
+            System.out.println("FILE MISSING: " + filename);
+            return null;
+        }
+        AudioInputStream stream = AudioSystem.getAudioInputStream(file);
+        Clip clip = AudioSystem.getClip();
+        clip.open(stream); //åbner lydfilen, og hvis det lykkes, så er den klar til at blive spillet
+        System.out.println("LYD INDLÆST: " + filename);
+        return clip;
+    } catch (UnsupportedAudioFileException e) { //tjekker om formatet virker, og hvis det ikke gør, så giver den en fejlbesked i konsollen
+        System.out.println("FEJL: Java understøtter ikke det format " + filename + ". Brug 16-bit PCM.");
+        return null;
+    } catch (Exception e) {
+        e.printStackTrace();
+        return null;
+    }
+}
+private void updateMusic(State s) {
+    boolean isMenuState = (s == State.MENU || s == State.PROFILE_HUB || s == State.SETTINGS || 
+                           s == State.STORE || s == State.STATISTICS || s == State.ACHIEVEMENTS ||
+                           s == State.MAP_SELECT || s == State.MAP_HUB || s == State.LEADERBOARD ||
+                           s == State.OVERALL_LEADERBOARD || s == State.FRIENDS_HUB ||
+                           s == State.CONTROLS || s == State.POINTS || s == State.LOGIN);
+
+    if (isMenuState) {
+        // Stop gameplay musik hvis det kører
+        if (gameMusic != null && gameMusic.isRunning()) gameMusic.stop();
+
+        // Start kun menu musik hvis det ikke allerede kører, for at undgå at starte det forfra hver gang
+        if (menuMusic == null) menuMusic = loadSound("menu.wav");
+        if (menuMusic != null && !menuMusic.isRunning()) {
+            menuMusic.setFramePosition(0);
+            menuMusic.loop(Clip.LOOP_CONTINUOUSLY);
+        }
+    } else if (s == State.PLAYING) {
+        // Stop menu musik
+        if (menuMusic != null && menuMusic.isRunning()) menuMusic.stop();
+
+        // Start gameplay musik
+        if (gameMusic == null) gameMusic = loadSound("gameplay.wav");
+        if (gameMusic != null && !gameMusic.isRunning()) {
+            gameMusic.setFramePosition(0);
+            gameMusic.loop(Clip.LOOP_CONTINUOUSLY);
+        }
+    }
+}
 
 } 
