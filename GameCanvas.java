@@ -432,16 +432,16 @@ private void handlePurchaseOrEquip(String itemID, int price) {
     // hvis vi ikke ejer det, så er det et køb, ellers er det en equip
     if (!owned) {
         // spørg om de gerne vil købe det 
-        int res = JOptionPane.showConfirmDialog(this, "Vil du købe " + id + "?", "BUTIK", JOptionPane.YES_NO_OPTION);
+        int res = JOptionPane.showConfirmDialog(this, "Want to buy " + id + "?", "BUTIK", JOptionPane.YES_NO_OPTION);
         
         if (res == JOptionPane.YES_OPTION) {
             if (coins >= price) {       // tjekker om de har coins nok
                 coins -= price;         // tager pengende
                 addOwnedItem(id);       // indsætter til OwnedItems så at det kan tjekkes i fremtiden
                 updateUserData();       // gemmer den nye data så at det kan gemmes til useren næste gang
-                JOptionPane.showMessageDialog(this, id + " købt!");
+                JOptionPane.showMessageDialog(this, id + " Bought!");
             } else {
-                JOptionPane.showMessageDialog(this, "Ikke nok mønter!");
+                JOptionPane.showMessageDialog(this, "Not enough coins!");
             }
         }
     } 
